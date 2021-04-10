@@ -119,7 +119,6 @@ import { mapMutations } from 'vuex'
 import { sites, setting } from '../lib/dexie'
 import zy from '../lib/site/tools'
 import { remote } from 'electron'
-import { sites as defaultSites } from '../lib/dexie/initData'
 import fs from 'fs'
 import Sortable from 'sortablejs'
 
@@ -380,43 +379,76 @@ export default {
       }
       const options = {
         filters: [
-          { name: 'JSON file', extensions: ['json'] }
+          { name: '支持的文件格式', extensions: ['json', 'txt'] }
         ],
         properties: ['openFile', 'multiSelections']
       }
       remote.dialog.showOpenDialog(options).then(result => {
         if (!result.canceled) {
           result.filePaths.forEach(file => {
-            const str = fs.readFileSync(file)
-            const json = JSON.parse(str)
-            json.forEach(ele => {
-              if (ele.api && this.sites.filter(x => x.key === ele.key).length === 0 && this.sites.filter(x => x.name === ele.name && x.api === ele.api).length === 0) {
-                // 不含该key 同时也不含名字和url一样的
-                if (ele.isActive === undefined) {
-                  ele.isActive = true
+            if (file.endsWith('json')) {
+              const str = fs.readFileSync(file)
+              const json = JSON.parse(str)
+              json.forEach(ele => {
+                if (ele.api && this.sites.filter(x => x.key === ele.key).length === 0 && this.sites.filter(x => x.name === ele.name && x.api === ele.api).length === 0) {
+                  // 不含该key 同时也不含名字和url一样的
+                  if (ele.isActive === undefined) {
+                    ele.isActive = true
+                  }
+                  if (ele.group === undefined) {
+                    ele.group = '导入'
+                  }
+                  this.sites.push(ele)
                 }
-                if (ele.group === undefined) {
-                  ele.group = '导入'
-                }
-                this.sites.push(ele)
+              })
+              this.resetId(this.sites)
+              sites.clear().then(sites.bulkAdd(this.sites))
+              this.$message.success('导入成功')
+              this.getSites()
+            }
+            if (file.endsWith('txt')) {
+              try {
+                const txt = fs.readFileSync(file, 'utf8')
+                const json = JSON.parse(txt)
+                json.forEach(ele => {
+                  if (ele.api && this.sites.filter(x => x.key === ele.key).length === 0 && this.sites.filter(x => x.name === ele.name && x.api === ele.api).length === 0) {
+                    // 不含该key 同时也不含名字和url一样的
+                    if (ele.isActive === undefined) {
+                      ele.isActive = true
+                    }
+                    if (ele.group === undefined) {
+                      ele.group = '导入'
+                    }
+                    this.sites.push(ele)
+                  }
+                })
+                this.resetId(this.sites)
+                sites.clear().then(sites.bulkAdd(this.sites))
+                this.$message.success('导入成功')
+                this.getSites()
+              } catch (error) {
+                this.$message.warning('导入失败')
               }
-            })
-            this.resetId(this.sites)
-            sites.clear().then(sites.bulkAdd(this.sites))
-            this.$message.success('导入成功')
-            this.getSites()
+            }
           })
         }
       })
     },
     resetSitesEvent () {
-      this.stopFlag = true
-      if (this.checkAllSitesLoading) {
-        this.$message.info('部分检测还未完全终止, 请稍等...')
-        return
+      let url = this.setting.sitesDataURL
+      if (!url) {
+        // 如果没有设置源站文件链接,使用默认的gitee源
+        url = 'https://gitee.com/cuiocean/ZY-Player-Resources/raw/main/Sites/Sites.json'
       }
-      sites.clear().then(sites.bulkAdd(defaultSites).then(this.getSites()))
-      this.$message.success('重置源成功')
+      zy.getDefaultSites(url).then(res => {
+        if (res.length > 0) {
+          sites.clear().then(sites.bulkAdd(res))
+          this.$message.success('重置源成功')
+          this.getSites()
+        }
+      }).catch(error => {
+        this.$message.error('导入云端源站失败. ' + error)
+      })
     },
     moveToTopEvent (i) {
       if (this.checkAllSitesLoading) {

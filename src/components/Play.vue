@@ -50,7 +50,7 @@
             <polyline points="12 5 12 12 16 16"></polyline>
           </svg>
         </span>
-        <span class="zy-svg" @click="starEvent" :class="isStar ? 'active' : ''" v-show="right.list.length > 0">
+        <span class="zy-svg" @click="starEvent" :class="isStar ? 'active' : ''" v-show="right.list.length > 0 || isStar">
           <svg role="img" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-labelledby="favouriteIconTitle">
             <title id="favouriteIconTitle">收藏</title>
             <path d="M12,21 L10.55,19.7051771 C5.4,15.1242507 2,12.1029973 2,8.39509537 C2,5.37384196 4.42,3 7.5,3 C9.24,3 10.91,3.79455041 12,5.05013624 C13.09,3.79455041 14.76,3 16.5,3 C19.58,3 22,5.37384196 22,8.39509537 C22,12.1029973 18.6,15.1242507 13.45,19.7149864 L12,21 Z"></path>
@@ -65,13 +65,13 @@
             <path d="M5 2h14a3 3 0 0 1 3 3v17H2V5a3 3 0 0 1 3-3z"></path>
           </svg>
         </span>
-        <span class="zy-svg" @click="miniEvent" v-show="right.list.length > 0">
+        <span class="zy-svg" @click="miniEvent" v-show="!onlineUrl && right.list.length > 0">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-labelledby="diamondIconTitle">
             <title id="diamondIconTitle">精简模式</title>
             <path d="M12 20L3 11M12 20L21 11M12 20L8 11M12 20L16 11M3 11L7 5M3 11H8M7 5L8 11M7 5H12M17 5L21 11M17 5L16 11M17 5H12M21 11H16M8 11H16M8 11L12 5M16 11L12 5"></path>
           </svg>
         </span>
-        <span class="zy-svg" @click="playWithExternalPalyerEvent" v-show="right.list.length > 0">
+        <span class="zy-svg" @click="playWithExternalPalyerEvent" v-show="!onlineUrl && right.list.length > 0">
           <svg role="img" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-labelledby="tvIconTitle">
             <title id="tvIconTitle" >使用第三方播放器</title>
             <polygon points="20 8 20 20 4 20 4 8"></polygon>
@@ -95,7 +95,7 @@
             <rect x="17" y="6" width="1" height="1"></rect>
           </svg>
         </span>
-        <span class="zy-svg" @click="showShortcutEvent" :class="right.type === 'shortcut' ? 'active' : ''" v-show="right.list.length > 0">
+        <span class="zy-svg" @click="showShortcutEvent" :class="right.type === 'shortcut' ? 'active' : ''" v-show="!onlineUrl && right.list.length > 0">
           <svg role="img" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-labelledby="sendIconTitle">
             <title id="sendIconTitle">快捷键指南</title>
             <polygon points="21.368 12.001 3 21.609 3 14 11 12 3 9.794 3 2.394"></polygon>
@@ -217,7 +217,7 @@
       </div>
     </transition>
     <transition name="slideX">
-      <div v-if="state.showChannelList" class="list" v-clickoutside="closeListEvent">
+      <div v-if="state.showChannelList && channelList && channelList.length > 0" class="list" v-clickoutside="closeListEvent">
          <div class="list-top">
           <span class="list-top-title">频道列表</span>
           <span class="list-top-close zy-svg" @click="state.showChannelList = false">
@@ -445,6 +445,9 @@ export default {
       set (val) {
         this.SET_DetailCache(val)
       }
+    },
+    VideoEssentialInfo () {
+      return this.video.key + '@' + this.video.info.id + '@' + this.video.info.index
     }
   },
   watch: {
@@ -458,12 +461,11 @@ export default {
         }
       }
     },
-    video: {
+    VideoEssentialInfo: {
       handler () {
         if (this.changingIPTV) return
         this.getUrls()
-      },
-      deep: true
+      }
     },
     setting: {
       handler () {
@@ -612,14 +614,14 @@ export default {
       if (document.querySelector('xg-btn-showhistory')) document.querySelector('xg-btn-showhistory').style.display = 'none'
       if (document.querySelector('.xgplayer-playbackrate')) document.querySelector('.xgplayer-playbackrate').style.display = 'none'
     },
-    getPlayer (playerType, force = false) {
+    async getPlayer (playerType, force = false) {
       if (!force && this.playerType === playerType) return
       if (this.playerType !== 'flv') {
         this.xg.src = '' // https://developers.google.com/web/updates/2017/06/play-request-was-interrupted#danger-zone
         this.config.url = ''
       }
       try {
-        this.xg.destroy()
+        if (this.xg) this.xg.destroy()
       } catch (err) { }
       this.xg = null
       switch (playerType) {
@@ -635,9 +637,11 @@ export default {
       this.playerInstall()
       this.bindEvent()
       this.playerType = playerType
+      if (this.miniMode) { await this.saveMiniWindowState(); this.miniEvent() }
     },
     playVideo (index = 0, time = 0) {
       this.isLive = false
+      this.isStar = false
       this.exportablePlaylist = false
       this.fetchPlaylist().then(async (fullList) => {
         let playlist = fullList[0].list // ZY支持的已移到首位
@@ -709,7 +713,7 @@ export default {
               name: res.name
             })
             resolve(res.fullList)
-          })
+          }).catch(err => { this.$message.error('播放地址可能已失效，请换源并调整收藏', err); this.name = this.video.info.name; this.updateStar(); this.otherEvent() })
         } else {
           res = this.DetailCache[cacheKey]
           this.name = res.name
@@ -899,7 +903,7 @@ export default {
       }
     },
     async miniEvent () {
-      this.mainWindowBounds = JSON.parse(JSON.stringify(win.getBounds()))
+      if (!this.miniMode) this.mainWindowBounds = JSON.parse(JSON.stringify(win.getBounds()))
       let miniWindowBounds
       await mini.find().then(res => { if (res) miniWindowBounds = res.bounds })
       if (!miniWindowBounds) miniWindowBounds = { x: win.getPosition()[0], y: win.getPosition()[1], width: 550, height: 340 }
@@ -908,7 +912,7 @@ export default {
       document.querySelector('xg-btn-quitMiniMode').style.display = 'block'
       this.miniMode = true
     },
-    async exitMiniEvent () {
+    async saveMiniWindowState () {
       await mini.find().then(res => {
         let doc = {}
         doc = {
@@ -921,6 +925,9 @@ export default {
           mini.add(doc)
         }
       })
+    },
+    async exitMiniEvent () {
+      await this.saveMiniWindowState()
       win.setBounds(this.mainWindowBounds)
       this.xg.exitCssFullscreen()
       document.querySelector('xg-btn-quitMiniMode').style.display = 'none'
@@ -1462,7 +1469,8 @@ export default {
 
       this.xg.on('volumechange', () => {
         this.config.volume = this.xg.volume.toFixed(2)
-        setting.find().then(res => { res.volume = this.config.volume; setting.update(res) })
+        const volume = this.config.volume
+        setTimeout(() => { if (volume === this.config.volume) setting.find().then(res => { res.volume = this.config.volume; setting.update(res) }) }, 500)
       })
 
       this.xg.on('timeupdate', () => {
@@ -1495,8 +1503,8 @@ export default {
         this.toggleHistory()
       })
 
-      this.xg.on('videoStop', () => {
-        if (this.miniMode) this.exitMiniEvent()
+      this.xg.on('videoStop', async () => {
+        if (this.miniMode) await this.exitMiniEvent()
         this.videoStop()
       })
 
@@ -1557,12 +1565,8 @@ export default {
       this.state.showTimespanSetting = false
       this.right.list = []
       this.getAllhistory()
-      if (this.playerType !== 'flv') {
-        this.getPlayer(this.playerType, true)
-      } else {
-        this.xg.destroy()
-        this.getPlayer('hls', true)
-      }
+      if (this.playerType === 'flv') this.xg.destroy()
+      this.getPlayer('hls', true)
     },
     minMaxEvent () {
       win.on('minimize', () => {
@@ -1738,12 +1742,6 @@ export default {
 }
 .xgplayer-skin-default .xgplayer-playbackrate {
   width: 40px !important;
-}
-.xgplayer-skin-default .xgplayer-playbackrate .name {
-  top: 10px !important;
-}
-.xgplayer-skin-default .xgplayer-playbackrate ul {
-  bottom: 20px;
 }
 .xgplayer-skin-default .xgplayer-playbackrate ul li {
   font-size: 13px !important;

@@ -1,6 +1,8 @@
 import Vue from 'vue'
-import { Message, Button, Table, TableColumn, Tag, Input, InputNumber, Dialog, Form, FormItem, Switch, Select, Option, Checkbox, Autocomplete, Col, Tree, Divider, Progress } from 'element-ui'
+import { Message, Button, Table, TableColumn, Tag, Input, InputNumber, Dialog, Form, FormItem, Switch, Select, Option, Checkbox, Autocomplete, Col, Tree, Divider, Progress, MessageBox } from 'element-ui'
 import Plugin from 'v-fit-columns'
+import { ButtonGroupPlugin } from 'bootstrap-vue'
+Vue.use(ButtonGroupPlugin)
 Vue.use(Button)
 Vue.use(Col)
 Vue.use(Table)
@@ -21,3 +23,4 @@ Vue.use(Tree)
 Vue.use(Divider)
 Vue.use(Progress)
 Vue.prototype.$message = Message
+Vue.prototype.$msgbox = MessageBox

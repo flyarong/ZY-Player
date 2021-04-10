@@ -322,7 +322,6 @@ export default {
   data () {
     return {
       showFind: false,
-      showToolbar: false,
       showTableLastColumn: false,
       sites: [],
       site: {},
@@ -345,18 +344,20 @@ export default {
       filteredSearchContents: [],
       currentColumn: '',
       searchGroup: '',
-      searchGroups: [],
+      searchGroups: ['站内', '组内', '全站'],
       // 福利片关键词
-      r18KeyWords: ['伦理', '论理', '倫理', '福利', '激情', '理论', '写真', '情色', '美女', '街拍', '赤足', '性感', '里番'],
+      r18KeyWords: ['伦理', '论理', '倫理', '福利', '激情', '理论', '写真', '情色', '美女', '街拍', '赤足', '性感', '里番', 'VIP'],
       filteredList: [],
       areas: [],
+      searchRunning: false,
+      siteSearchCount: 0,
+      infiniteHandlerCount: 0,
+      // Toolbar
+      showToolbar: false,
       selectedAreas: [],
       sortKeyword: '',
       sortKeywords: ['按片名', '按上映年份', '按更新时间'],
-      selectedYears: { start: 0, end: new Date().getFullYear() },
-      searchRunning: false,
-      siteSearchCount: 0,
-      infiniteHandlerCount: 0
+      selectedYears: { start: 0, end: new Date().getFullYear() }
     }
   },
   components: {
@@ -417,8 +418,9 @@ export default {
     },
     searchSites () {
       if (this.searchGroup === '站内') return [this.site]
+      if (this.searchGroup === '组内') return this.sites.filter(site => site.group === this.site.group)
       if (this.searchGroup === '全站') return this.sites
-      return this.sites.filter(site => site.group === this.searchGroup)
+      return this.sites.filter(site => site.isActive)
     }
   },
   filters: {
@@ -457,6 +459,7 @@ export default {
     },
     searchContents: {
       handler (list) {
+        list = list.filter(res => !this.setting.excludeR18Films || !this.containsR18Keywords(res.type))
         this.areas = [...new Set(list.map(ele => ele.area))].filter(x => x)
         this.searchClassList = [...new Set(list.map(ele => ele.type))].filter(x => x)
         this.refreshFilteredList()
@@ -818,7 +821,7 @@ export default {
               zy.detail(site.key, element.id).then(detailRes => {
                 if (id !== this.searchID || !this.searchRunning) return
                 detailRes.site = site
-                if (detailRes.dl.dd && (detailRes.dl.dd._t || (Object.prototype.toString.call(detailRes.dl.dd) === '[object Array]' && detailRes.dl.dd.some(i => i._t)))) {
+                if (this.isValidSearchResult(detailRes)) {
                   this.searchContents.push(detailRes)
                   this.searchContents.sort(function (a, b) {
                     return a.site.id - b.site.id
@@ -830,7 +833,7 @@ export default {
             zy.detail(site.key, res.id).then(detailRes => {
               if (id !== this.searchID || !this.searchRunning) return
               detailRes.site = site
-              if (detailRes.dl.dd && (detailRes.dl.dd._t || (Object.prototype.toString.call(detailRes.dl.dd) === '[object Array]' && detailRes.dl.dd.some(i => i._t)))) {
+              if (this.isValidSearchResult(detailRes)) {
                 this.searchContents.push(detailRes)
                 this.searchContents.sort(function (a, b) {
                   return a.site.id - b.site.id
@@ -844,6 +847,10 @@ export default {
           }
         }).catch(() => { this.siteSearchCount++; if (this.searchGroup === '站内') this.$message.error('本次查询状态异常，未获取到数据！') })
       })
+    },
+    isValidSearchResult (detailRes) {
+      return detailRes.dl.dd && (detailRes.dl.dd._t || (Object.prototype.toString.call(detailRes.dl.dd) === '[object Array]' &&
+             detailRes.dl.dd.some(i => i._t)))
     },
     searchAndRecord () {
       this.addSearchRecord()
@@ -868,10 +875,6 @@ export default {
             this.selectedSiteName = this.sites[0].name
           }
         }
-        this.searchGroups = [...new Set(this.sites.map(site => site.group))]
-        if (this.searchGroups.length === 1) this.searchGroups = []
-        this.searchGroups.unshift('站内')
-        this.searchGroups.push('全站')
         this.searchGroup = this.setting.searchGroup
         if (this.searchGroup === undefined) setting.find().then(res => { this.searchGroup = res.searchGroup })
       })

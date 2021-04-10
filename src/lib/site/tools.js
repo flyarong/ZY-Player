@@ -108,16 +108,19 @@ const zy = {
     return new Promise((resolve, reject) => {
       this.getSite(key).then(res => {
         const url = res.api
-        axios.post(url).then(res => {
+        axios.get(url).then(res => {
           const data = res.data
           const json = parser.parse(data, this.xmlConfig)
-          const jsondata = json.rss === undefined ? json : json.rss
+          const jsondata = json?.rss === undefined ? json : json.rss
+          if (!jsondata?.class || !jsondata?.list) resolve()
           const arr = []
           if (jsondata.class) {
+            // 有些网站返回的分类名里会含有一串包含在{}内的字符串,移除掉
+            const regex = /\{.*\}/i
             for (const i of jsondata.class.ty) {
               const j = {
                 tid: i._id,
-                name: i._t
+                name: i._t.replace(regex, '')
               }
               arr.push(j)
             }
@@ -153,7 +156,7 @@ const zy = {
         } else {
           url = `${site.api}?ac=videolist&pg=${pg}`
         }
-        axios.post(url).then(async res => {
+        axios.get(url).then(async res => {
           const data = res.data
           const json = parser.parse(data, this.xmlConfig)
           const jsondata = json.rss === undefined ? json : json.rss
@@ -185,7 +188,7 @@ const zy = {
         } else {
           url = `${site.api}?ac=videolist`
         }
-        axios.post(url).then(async res => {
+        axios.get(url).then(async res => {
           const data = res.data.match(/<list [^>]*>/)[0] + '</list>' // 某些源站不含页码时获取到的数据parser无法解析
           const json = parser.parse(data, this.xmlConfig)
           const jsondata = json.rss === undefined ? json : json.rss
@@ -212,15 +215,22 @@ const zy = {
     return new Promise((resolve, reject) => {
       this.getSite(key).then(res => {
         const site = res
-        wd = encodeURI(wd)
-        const url = `${site.api}?wd=${wd}`
-        axios.post(url, { timeout: 3000 }).then(res => {
+        const url = `${site.api}?wd=${encodeURI(wd)}`
+        axios.get(url, { timeout: 3000 }).then(res => {
           const data = res.data
           const json = parser.parse(data, this.xmlConfig)
-          const jsondata = json.rss === undefined ? json : json.rss
+          const jsondata = json?.rss === undefined ? json : json.rss
           if (json && jsondata && jsondata.list) {
-            const videoList = jsondata.list.video
-            resolve(videoList)
+            let videoList = jsondata.list.video
+            if (Object.prototype.toString.call(videoList) === '[object Object]') videoList = [].concat(videoList)
+            videoList = videoList?.filter(e => e.name.toLowerCase().includes(wd.toLowerCase()))
+            if (videoList?.length) {
+              resolve(videoList)
+            } else {
+              resolve()
+            }
+          } else {
+            resolve()
           }
         }).catch(err => {
           reject(err)
@@ -240,11 +250,12 @@ const zy = {
     return new Promise((resolve, reject) => {
       this.getSite(key).then(res => {
         const url = `${res.api}?ac=videolist&ids=${id}`
-        axios.post(url).then(res => {
+        axios.get(url).then(res => {
           const data = res.data
           const json = parser.parse(data, this.xmlConfig)
-          const jsondata = json.rss === undefined ? json : json.rss
-          const videoList = jsondata.list.video
+          const jsondata = json?.rss === undefined ? json : json.rss
+          const videoList = jsondata?.list?.video
+          if (!videoList) resolve()
           // Parse video lists
           let fullList = []
           let index = 0
@@ -312,7 +323,7 @@ const zy = {
         const site = res
         if (site.download) {
           const url = `${site.download}?ac=videolist&ids=${id}&ct=1`
-          axios.post(url).then(res => {
+          axios.get(url).then(res => {
             const data = res.data
             const json = parser.parse(data, this.xmlConfig)
             const jsondata = json.rss === undefined ? json : json.rss
@@ -486,12 +497,49 @@ const zy = {
       })
     })
   },
+  /**
+  * 获取豆瓣相关视频推荐列表
+  * @param {*} name 视频名称
+  * @param {*} year 视频年份
+  * @returns 豆瓣相关视频推荐列表
+  */
+  doubanRecommendations (name, year) {
+    return new Promise((resolve, reject) => {
+      const nameToSearch = name.replace(/\s/g, '')
+      const recommendations = []
+      this.doubanLink(nameToSearch, year).then(link => {
+        if (link.includes('https://www.douban.com/search')) {
+          resolve(recommendations)
+        } else {
+          axios.get(link).then(response => {
+            const $ = cheerio.load(response.data)
+            $('div.recommendations-bd').find('div>dl>dd>a').each(function (index, element) {
+              recommendations.push($(element).text())
+            })
+            resolve(recommendations)
+          }).catch(err => {
+            reject(err)
+          })
+        }
+      }).catch(err => {
+        reject(err)
+      })
+    })
+  },
   get7kParseURL () {
     return new Promise((resolve, reject) => {
       axios.get('https://zy.7kjx.com/').then(res => {
         const $ = cheerio.load(res.data)
         const parseURL = $('body > div.container > div > div.stui-pannel > div.col-pd > p:contains("解析接口:")').first().find('a').text()
         resolve(parseURL)
+      }).catch(err => { reject(err) })
+    })
+  },
+  getDefaultSites () {
+    const url = 'https://gitee.com/cuiocean/ZY-Player-Resources/raw/main/Sites/Sites.json'
+    return new Promise((resolve, reject) => {
+      axios.get(url).then(res => {
+        resolve(res.data)
       }).catch(err => { reject(err) })
     })
   },
